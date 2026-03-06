@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تحدي مستعمرة الروبوتات الفضائية</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #020617;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(15px);
+            padding: 24px;
+            border-radius: 20px;
+            color: white;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            max-width: 320px;
+            pointer-events: auto;
+            box-shadow: 0 0 30px rgba(56, 189, 248, 0.1);
+            z-index: 10;
+        }
+        .mission-box {
+            background: linear-gradient(45deg, rgba(30, 41, 59, 0.5), rgba(51, 65, 85, 0.5));
+            border-right: 4px solid #38bdf8;
+            padding: 12px;
+            margin: 15px 0;
+            border-radius: 8px;
+        }
+        .mode-btn {
+            @apply flex-1 py-3 rounded-xl text-[11px] font-bold transition-all border-2 flex flex-col items-center gap-1;
+        }
+        .active-mode {
+            @apply bg-cyan-600/20 border-cyan-400 text-cyan-100 shadow-[0_0_15px_rgba(34,211,238,0.4)];
+        }
+        .inactive-mode {
+            @apply bg-slate-800/50 border-slate-700 text-slate-500 hover:border-slate-500;
+        }
+        .stat-bar {
+            height: 6px;
+            background: #1e293b;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+        .stat-progress {
+            height: 100%;
+            transition: width 0.3s;
+        }
+        input[type=range] {
+            @apply w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ui-overlay">
+        <h2 class="text-2xl font-black mb-1 text-transparent bg-clip-text bg-gradient-to-l from-cyan-400 to-blue-200">
+            أسراب الحماية الذكية
+        </h2>
+        <div class="mission-box">
+            <p class="text-[11px] text-cyan-300 font-bold mb-1">🛡️ ذكاء سربي ديناميكي:</p>
+            <p id="mission-text" class="text-[10px] text-slate-300 leading-relaxed">
+                تغير الروبوتات ألوانها بناءً على "مستوى التهديد". الأزرق يعني الأمان، والأحمر يعني الاقتراب من الخطر!
+            </p>
+        </div>
+        
+        <div class="flex gap-2 mb-4">
+            <button id="mode-food" class="mode-btn active-mode">
+                <span class="text-lg">🔋</span>
+                <span>نواة الطاقة</span>
+            </button>
+            <button id="mode-wall" class="mode-btn inactive-mode">
+                <span class="text-lg">🧨</span>
+                <span>ثقب برمجـي</span>
+            </button>
+            <button id="mode-inspect" class="mode-btn inactive-mode">
+                <span class="text-lg">🖥️</span>
+                <span>تحليل الوحدة</span>
+            </button>
+        </div>
+
+        <div class="space-y-4 mb-4">
+            <div>
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-[10px] text-slate-400 uppercase">سرعة المعالجة:</span>
+                    <span id="speed-val" class="text-[10px] text-cyan-400 font-bold">1.0x</span>
+                </div>
+                <input type="range" id="speed-slider" min="0.1" max="2.5" step="0.1" value="1.0">
+            </div>
+            
+            <div class="pt-2 border-t border-slate-700/50">
+                <div class="flex justify-between items-center px-1">
+                    <span class="text-[10px] text-slate-400 uppercase">الوحدات في الخدمة:</span>
+                    <span id="health-pct" class="text-[10px] text-cyan-400 font-bold">300</span>
+                </div>
+                <div class="stat-bar"><div id="health-bar" class="stat-progress bg-cyan-500" style="width: 100%"></div></div>
+            </div>
+
+            <button id="clear-btn" class="w-full py-2 bg-slate-800 hover:bg-blue-900/30 border border-slate-700 rounded-lg text-xs text-slate-400 transition-all">
+                إرسال سرب مطور (R)
+            </button>
+        </div>
+    </div>
+
+    <div id="inspector" class="absolute bottom-6 right-6 bg-slate-900/90 p-4 rounded-xl border border-cyan-500 text-white w-64 hidden">
+        <h3 class="text-xs font-bold text-cyan-400 mb-2 italic">مؤشرات الاستشعار</h3>
+        <div class="text-[10px] space-y-2">
+            <div class="flex justify-between"><span>المعرف:</span> <span id="rob-id">0</span></div>
+            <div class="flex justify-between"><span>مستوى القلق:</span> <span id="rob-stress" class="text-blue-400">منخفض</span></div>
+            <div class="flex justify-between"><span>التماسك السربي:</span> <span class="text-green-400">ممتاز</span></div>
+        </div>
+    </div>
+
+    <canvas id="swarmCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('swarmCanvas');
+        const ctx = canvas.getContext('2d');
+        const inspector = document.getElementById('inspector');
+        
+        const modeFoodBtn = document.getElementById('mode-food');
+        const modeWallBtn = document.getElementById('mode-wall');
+        const modeInspectBtn = document.getElementById('mode-inspect');
+        const clearBtn = document.getElementById('clear-btn');
+        const healthBar = document.getElementById('health-bar');
+        const healthPct = document.getElementById('health-pct');
+        const speedSlider = document.getElementById('speed-slider');
+        const speedValLabel = document.getElementById('speed-val');
+
+        let robots = [];
+        let target = null;
+        let obstacles = [];
+        let currentMode = 'food';
+        let inspectedRobot = null;
+        let globalSpeed = 1.0;
+        const INITIAL_COUNT = 300; 
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        class Robot {
+            constructor(id) {
+                this.id = id;
+                this.reset();
+            }
+
+            reset() {
+                this.x = canvas.width / 2 + (Math.random() - 0.5) * 40;
+                this.y = canvas.height / 2 + (Math.random() - 0.5) * 40;
+                this.vx = (Math.random() - 0.5) * 5;
+                this.vy = (Math.random() - 0.5) * 5;
+                this.alive = true;
+                this.stress = 0; // مستوى القلق (من 0 إلى 1)
+                this.color = '#6366f1';
+                this.history = [];
+            }
+
+            update() {
+                if (!this.alive) return;
+
+                let ax = 0, ay = 0;
+                let cohesionX = 0, cohesionY = 0;
+                let count = 0;
+
+                // 1. التوجه نحو الهدف (Target Attraction)
+                if (target) {
+                    let dx = target.x - this.x;
+                    let dy = target.y - this.y;
+                    let dist = Math.hypot(dx, dy);
+                    if (dist > 5) {
+                        ax += (dx / dist) * 0.4;
+                        ay += (dy / dist) * 0.4;
+                    }
+                }
+
+                // 2. الذكاء السربي (التماسك وتجنب التصادم)
+                robots.forEach(other => {
+                    if (other === this || !other.alive) return;
+                    let dx = other.x - this.x;
+                    let dy = other.y - this.y;
+                    let distSq = dx*dx + dy*dy;
+                    
+                    if (distSq < 2500) { // شعور بالجيران في نطاق 50 بكسل
+                        let dist = Math.sqrt(distSq);
+                        if (dist < 20) { // تجنب التصادم (قوة طرد)
+                            ax -= (dx / dist) * 0.8;
+                            ay -= (dy / dist) * 0.8;
+                        } else { // تماسك (قوة جذب بسيطة للبقاء معاً)
+                            cohesionX += dx;
+                            cohesionY += dy;
+                            count++;
+                        }
+                    }
+                });
+
+                if (count > 0) {
+                    ax += (cohesionX / count) * 0.015;
+                    ay += (cohesionY / count) * 0.015;
+                }
+
+                // 3. تجنب العوائق وتغيير اللون
+                let maxDanger = 0;
+                obstacles.forEach(obs => {
+                    let dx = this.x - obs.x;
+                    let dy = this.y - obs.y;
+                    let dist = Math.hypot(dx, dy);
+                    let dangerZone = obs.r + 60;
+
+                    if (dist < dangerZone) {
+                        // حساب مستوى الخطر (1 عند الحافة، 0 بعيداً)
+                        let dangerLevel = 1 - (dist - obs.r) / 60;
+                        maxDanger = Math.max(maxDanger, dangerLevel);
+
+                        // قوة هروب قوية من الخطر
+                        ax += (dx / dist) * 5 * dangerLevel;
+                        ay += (dy / dist) * 5 * dangerLevel;
+                        
+                        if (dist < obs.r) this.die();
+                    }
+                });
+
+                this.stress = maxDanger;
+                this.updateColor();
+
+                // تطبيق الحركة مع مقاومة بسيطة
+                this.vx = (this.vx + ax * globalSpeed) * 0.92;
+                this.vy = (this.vy + ay * globalSpeed) * 0.92;
+                
+                this.x += this.vx * globalSpeed;
+                this.y += this.vy * globalSpeed;
+
+                // ارتداد من الحدود
+                if (this.x < 10) this.vx += 0.5;
+                if (this.x > canvas.width - 10) this.vx -= 0.5;
+                if (this.y < 10) this.vy += 0.5;
+                if (this.y > canvas.height - 10) this.vy -= 0.5;
+
+                // تحديث الذيل للجمالية
+                this.history.push({x: this.x, y: this.y});
+                if (this.history.length > 3) this.history.shift();
+            }
+
+            updateColor() {
+                // الانتقال من الأزرق (240 درجة) إلى الأحمر (0 درجة) بناءً على التوتر
+                // Hue: Blue = 240, Red = 0
+                let hue = 240 - (this.stress * 240);
+                let saturation = 70 + (this.stress * 30);
+                this.color = `hsl(${hue}, ${saturation}%, 60%)`;
+            }
+
+            die() {
+                this.alive = false;
+                updateHealthUI();
+            }
+
+            draw() {
+                if (!this.alive) return;
+
+                // رسم ذيل متوهج بلون الروبوت
+                if (this.history.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.history[0].x, this.history[0].y);
+                    for(let p of this.history) ctx.lineTo(p.x, p.y);
+                    ctx.strokeStyle = this.color;
+                    ctx.globalAlpha = 0.3;
+                    ctx.stroke();
+                    ctx.globalAlpha = 1.0;
+                }
+
+                // رسم الروبوت
+                ctx.fillStyle = inspectedRobot === this ? '#ffffff' : this.color;
+                if (this.stress > 0.5) {
+                    ctx.shadowBlur = 8 * this.stress;
+                    ctx.shadowColor = this.color;
+                }
+                ctx.fillRect(this.x - 2.5, this.y - 2.5, 5, 5);
+                ctx.shadowBlur = 0;
+
+                if (inspectedRobot === this) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(this.x - 6, this.y - 6, 12, 12);
+                }
+            }
+        }
+
+        function updateHealthUI() {
+            const aliveCount = robots.filter(r => r.alive).length;
+            healthBar.style.width = (aliveCount / INITIAL_COUNT * 100) + '%';
+            healthPct.innerText = aliveCount;
+        }
+
+        function initSwarm() {
+            robots = [];
+            for (let i = 0; i < INITIAL_COUNT; i++) robots.push(new Robot(i));
+            updateHealthUI();
+        }
+
+        speedSlider.oninput = function() {
+            globalSpeed = parseFloat(this.value);
+            speedValLabel.innerText = globalSpeed.toFixed(1) + "x";
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            const x = e.clientX, y = e.clientY;
+            if (currentMode === 'food') target = { x, y };
+            else if (currentMode === 'wall') obstacles.push({ x, y, r: 25 });
+            else if (currentMode === 'inspect') {
+                let closest = null, minDist = 40;
+                robots.forEach(r => {
+                    if (!r.alive) return;
+                    let d = Math.hypot(r.x - x, r.y - y);
+                    if (d < minDist) { minDist = d; closest = r; }
+                });
+                inspectedRobot = closest;
+                if(inspectedRobot) {
+                    inspector.style.display = 'block';
+                } else {
+                    inspector.style.display = 'none';
+                }
+            }
+        });
+
+        const setMode = (m) => {
+            currentMode = m;
+            modeFoodBtn.className = m === 'food' ? 'mode-btn active-mode' : 'mode-btn inactive-mode';
+            modeWallBtn.className = m === 'wall' ? 'mode-btn active-mode' : 'mode-btn inactive-mode';
+            modeInspectBtn.className = m === 'inspect' ? 'mode-btn active-mode' : 'mode-btn inactive-mode';
+            if (m !== 'inspect') { inspectedRobot = null; inspector.style.display = 'none'; }
+        };
+
+        modeFoodBtn.onclick = () => setMode('food');
+        modeWallBtn.onclick = () => setMode('wall');
+        modeInspectBtn.onclick = () => setMode('inspect');
+
+        function animate() {
+            ctx.fillStyle = 'rgba(2, 6, 23, 0.4)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // رسم العوائق (الثقوب البرمجية)
+            obstacles.forEach(obs => {
+                let pulse = Math.sin(Date.now() / 200) * 5;
+                ctx.beginPath(); ctx.arc(obs.x, obs.y, obs.r + pulse, 0, Math.PI * 2);
+                ctx.fillStyle = '#0f172a'; ctx.fill();
+                ctx.strokeStyle = '#f43f5e'; ctx.lineWidth = 3; ctx.stroke();
+                
+                // هالة الخطر حول الثقب
+                ctx.beginPath(); ctx.arc(obs.x, obs.y, obs.r + 60, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(244, 63, 94, 0.1)'; ctx.stroke();
+            });
+
+            // رسم الهدف
+            if (target) {
+                ctx.beginPath(); ctx.arc(target.x, target.y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#fbbf24'; ctx.shadowBlur = 15; ctx.shadowColor = '#fbbf24'; ctx.fill(); ctx.shadowBlur = 0;
+            }
+
+            robots.forEach(r => {
+                r.update();
+                r.draw();
+            });
+
+            if (inspectedRobot) {
+                document.getElementById('rob-id').innerText = inspectedRobot.id;
+                const stressSpan = document.getElementById('rob-stress');
+                if (inspectedRobot.stress > 0.7) {
+                    stressSpan.innerText = "خطر شديد!";
+                    stressSpan.className = "text-red-500 font-bold";
+                } else if (inspectedRobot.stress > 0.1) {
+                    stressSpan.innerText = "قلق";
+                    stressSpan.className = "text-yellow-400";
+                } else {
+                    stressSpan.innerText = "منخفض";
+                    stressSpan.className = "text-blue-400";
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        initSwarm();
+        animate();
+        clearBtn.onclick = initSwarm;
+        window.addEventListener('keydown', (e) => { if(e.key.toLowerCase() === 'r') initSwarm(); });
+    </script>
+</body>
+</html>
